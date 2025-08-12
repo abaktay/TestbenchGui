@@ -7,6 +7,7 @@
 
 UARTComms::UARTComms(const char* device) : running_RX(false), fd(-1) {
     fd = open_port(device);
+    initialized = true;
 }
 
 UARTComms::~UARTComms() {
@@ -15,14 +16,12 @@ UARTComms::~UARTComms() {
 }
 
 void UARTComms::start() {
-    if (running_RX) return;
-    if (running_TX) return;
     running_RX = true;
     running_TX = true;
     thread_RX = std::thread(&UARTComms::getSerialInput, this);
 
-    std::cout << "zart\n";
     thread_TX = std::thread(&UARTComms::sendThrottlePacket, this);
+    std::cout << "zart\n";
 }
 
 void UARTComms::stop() {
@@ -35,23 +34,26 @@ void UARTComms::stop() {
 void UARTComms::set_throttle(uint16_t value) {
     std::lock_guard<std::mutex> lock(throttle_mutex);
     throttlePacket.arm_status = 0b10;
-    throttlePacket.update(value);
+    throttlePacket.throttle_value = value;
     throttlePacket.update_checksum(display.checksum);
 }
 
 void UARTComms::arm() {
+    std::lock_guard<std::mutex> lock(throttle_mutex);
     throttlePacket.arm_status = 0b01; 
 }
 
 void UARTComms::disarm() {
+    std::lock_guard<std::mutex> lock(throttle_mutex);
     throttlePacket.arm_status = 0b00; 
 }
 void UARTComms::reset() {
+    std::lock_guard<std::mutex> lock(throttle_mutex);
     throttlePacket.arm_status = 0b11; 
 }
 
 void UARTComms::get_log(float* logs) {
-     std::lock_guard<std::mutex> lock(log_mutex);
+    std::lock_guard<std::mutex> lock(log_mutex);
     logs[0] = (display.ADC1_CH1);
     logs[1] = (display.ADC1_CH2);
     logs[2] = (display.ADC1_CH3);
@@ -73,6 +75,9 @@ uint16_t UARTComms::calculate_checksum(uint8_t* buf) {
 }
 
 void UARTComms::getSerialInput() {
+    while (!initialized) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
     while (running_RX) {
       uint8_t buf[RX_PACKET_LEN] = {0};
     
@@ -85,10 +90,12 @@ void UARTComms::getSerialInput() {
         /*for (int i = 0; i<RX_PACKET_LEN; i++) {
             std::printf("buf[%d]: %u\n", i, buf[i]);
         }*/
+
         if (n == RX_PACKET_LEN) {
+            std::lock_guard<std::mutex> lock(log_mutex);
             display.update(buf);
             display.checksum = calculate_checksum(buf);
-            std::printf("Calculated checksum %d\n", display.checksum);
+            // std::printf("Calculated checksum %d\n", display.checksum);
         } else {
             //std::printf("Received bytes: %d\n", n);
         }
@@ -97,22 +104,29 @@ void UARTComms::getSerialInput() {
 }
 
 void UARTComms::sendThrottlePacket() {
+    while (!initialized) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
     while(running_TX) {
         if (fd < 0) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             continue;
         }
-
-        int n = write(fd, throttlePacket.get_packet().data(), TX_PACKET_LEN*sizeof(uint8_t));
-
-        if (n == TX_PACKET_LEN) {
-            //std::cout << "SENT PACKET\n";
+        
+        std::array<uint8_t, 5> packet_data;
+        {
+            std::lock_guard<std::mutex> lock(throttle_mutex);
+            packet_data = throttlePacket.get_packet();
         }
+        uint16_t temp; 
+        std::memcpy(&packet_data[1], &temp, sizeof(uint16_t));
+        
+        int n = write(fd, packet_data.data(), 5);
+        std::cout << "Write completed, n = " << n << "\n";
+        
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 }
-
-
 int open_port(const char* device) {
     int fd = open(device, O_RDWR | O_NOCTTY);
     if (fd < 0) return -1;

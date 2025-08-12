@@ -17,7 +17,6 @@
 #include <iostream>
 #include <thread>
 #include <unistd.h>
-#include <vector>
 
 
 class UARTComms {
@@ -34,15 +33,17 @@ public:
     void reset();
     bool is_connected() const;
     uint16_t calculate_checksum(uint8_t* buf);
+    
+    int sendFlag;
 
 private:
-    std::atomic<bool> running_RX{false}, running_TX{false};
+    std::atomic<bool> running_RX{false}, running_TX{false}, initialized{false};
     int fd;
     std::thread thread_RX;
     std::thread thread_TX;
     ThrottlePacket throttlePacket{0};
     std::mutex log_mutex, throttle_mutex;
-    Display display;
+    TestbenchDisplay display;
 
     void getSerialInput();
     void sendThrottlePacket();
