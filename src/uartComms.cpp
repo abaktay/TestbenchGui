@@ -16,12 +16,13 @@ UARTComms::~UARTComms() {
 }
 
 void UARTComms::start() {
+    if (running_RX) return;
+    if (running_TX) return;
     running_RX = true;
     running_TX = true;
     thread_RX = std::thread(&UARTComms::getSerialInput, this);
 
     thread_TX = std::thread(&UARTComms::sendThrottlePacket, this);
-    std::cout << "zart\n";
 }
 
 void UARTComms::stop() {
@@ -76,7 +77,7 @@ uint16_t UARTComms::calculate_checksum(uint8_t* buf) {
 
 void UARTComms::getSerialInput() {
     while (!initialized) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     while (running_RX) {
       uint8_t buf[RX_PACKET_LEN] = {0};
@@ -87,10 +88,10 @@ void UARTComms::getSerialInput() {
         }
         int n = read(fd, buf, sizeof(buf));
 
-        /*for (int i = 0; i<RX_PACKET_LEN; i++) {
-            std::printf("buf[%d]: %u\n", i, buf[i]);
-        }*/
-
+        // for (int i = 0; i<RX_PACKET_LEN; i++) {
+        //     std::printf("buf[%d]: %u\n", i, buf[i]);
+        // }
+         
         if (n == RX_PACKET_LEN) {
             std::lock_guard<std::mutex> lock(log_mutex);
             display.update(buf);
@@ -104,8 +105,9 @@ void UARTComms::getSerialInput() {
 }
 
 void UARTComms::sendThrottlePacket() {
+    // std::cout << "sendThrottlePacket started\n";
     while (!initialized) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     while(running_TX) {
         if (fd < 0) {
@@ -118,14 +120,12 @@ void UARTComms::sendThrottlePacket() {
             std::lock_guard<std::mutex> lock(throttle_mutex);
             packet_data = throttlePacket.get_packet();
         }
-        uint16_t temp; 
-        std::memcpy(&packet_data[1], &temp, sizeof(uint16_t));
-        
+        uint16_t temp = 0; 
         int n = write(fd, packet_data.data(), 5);
-        std::cout << "Write completed, n = " << n << "\n";
         
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
+    // std::cout << "sendThrottlePacket ended\n";
 }
 int open_port(const char* device) {
     int fd = open(device, O_RDWR | O_NOCTTY);

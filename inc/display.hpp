@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 
-struct TestbenchDisplay {
+struct Display {
     float ADC1_CH1 = 0;
     float ADC1_CH2 = 0;
     float ADC1_CH3 = 0;

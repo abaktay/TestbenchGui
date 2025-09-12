@@ -3,7 +3,7 @@
 #include <cstdio>
 #include <cstring>
 
-void TestbenchDisplay::update(const uint8_t* buffer) {
+void Display::update(const uint8_t* buffer) {
     if (!buffer) return;
     
     uint8_t msg_type;

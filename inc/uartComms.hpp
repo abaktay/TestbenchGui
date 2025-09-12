@@ -17,6 +17,7 @@
 #include <iostream>
 #include <thread>
 #include <unistd.h>
+#include <vector>
 
 
 class UARTComms {
@@ -43,7 +44,7 @@ private:
     std::thread thread_TX;
     ThrottlePacket throttlePacket{0};
     std::mutex log_mutex, throttle_mutex;
-    TestbenchDisplay display;
+    Display display;
 
     void getSerialInput();
     void sendThrottlePacket();
