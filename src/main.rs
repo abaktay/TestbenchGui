@@ -5,32 +5,25 @@ use std::{
     time::Duration,
 };
 
-use serialport::*;
+use eframe::egui;
+use serialport;
+use uart::{packet::TelemetryData, throttle::Commands, throttle::ThrottlePacket};
+
+mod gui;
+mod uart;
+
+use gui::TelemetryApp;
 
 fn main() {
-    match available_ports() {
-        Ok(mut ports) => {
-            ports.sort_by_key(|i| i.port_name.clone());
+    println!("Enter the device address: ");
+    let mut port_name = String::new();
+    io::stdin()
+        .read_line(&mut port_name)
+        .expect("Failed to read line");
 
-            match ports.len() {
-                0 => println!("Found no ports."),
-                1 => println!("Found 1 port."),
-                n => println!("Found {} ports.", n),
-            };
-
-            for p in ports {
-                println!("\t\t{}", p.port_name);
-            }
-        }
-        Err(_) => {
-            println!("zort");
-        }
-    }
-
-    let port_name = "/dev/ttyACM0";
-
-    let port = match serialport::new(port_name, 115200)
-        .timeout(Duration::from_secs(5))
+    println!("{}", port_name);
+    let port = match serialport::new(port_name.trim(), 115200)
+        .timeout(Duration::from_millis(500))
         .open()
     {
         Ok(port) => Arc::new(Mutex::new(port)),
@@ -40,49 +33,87 @@ fn main() {
         }
     };
 
-    let port_rx = Arc::clone(&port);
-    let rx_handle = thread::spawn(move || {
-        let mut buf = [0u8; 8];
+    let telemetry = TelemetryData::new();
+    let telemetry_arc = Arc::new(Mutex::new(telemetry));
 
+    let throttle_packet = ThrottlePacket::new(Commands::Set);
+    let throttle_arc = Arc::new(Mutex::new(throttle_packet));
+
+    /*
+        RX THREAD SECTION
+    */
+    let port_rx = Arc::clone(&port);
+    let tele_rx = Arc::clone(&telemetry_arc);
+    let rx_handle = thread::spawn(move || {
+        let mut buf = [0u8; 30];
         loop {
+            // First acquires the lock of the port for receiving input
+            // Then acquires the lock of TelemetryData to update it
             if let Ok(mut port_guard) = port_rx.lock() {
                 match port_guard.read_exact(buf.as_mut_slice()) {
                     Ok(_) => {
-                        // println!("Received bytes: {} ", n);
+                        // println!("Received bytes ");
                         io::stdout().write_all(&buf).unwrap();
+
+                        // Updates TelemetryData
+                        if let Ok(mut guard) = tele_rx.lock() {
+                            guard.process(buf);
+                        }
                     }
                     Err(e) => {
-                        eprintln!("Error occurred {}", e);
+                        eprintln!("RX Error occurred {}", e);
                     }
-                };
-
-                thread::sleep(Duration::from_millis(250));
+                }
             }
+            thread::sleep(Duration::from_millis(5));
         }
     });
 
+    /*
+        TX THREAD SECTION
+    */
     let port_tx = Arc::clone(&port);
+    let throttle_tx = Arc::clone(&throttle_arc);
     let tx_handle = thread::spawn(move || {
-        let to_send = [1u8; 5];
-
         loop {
+            // First acquires the lock of TX port
             if let Ok(mut port_guard) = port_tx.lock() {
-                println!("GOT THE LOCK");
-                match port_guard.write(to_send.as_slice()) {
-                    Ok(_) => {
-                        // println!("Sent bytes: {} ", n);
-                        println!("WOOOO");
-                        let _ = port_guard.flush();
-                    }
-                    Err(e) => {
-                        eprintln!("Error occurred {}", e);
-                    }
-                };
-                thread::sleep(Duration::from_millis(250));
+                if let Ok(tx_guard) = throttle_tx.lock() {
+                    // Sends the packet after acquiring throttle packet
+                    match port_guard.write(tx_guard.prep_packet().as_slice()) {
+                        Ok(_) => {
+                            let _ = port_guard.flush();
+                        }
+                        Err(e) => {
+                            eprintln!("TX Error occurred {}", e);
+                        }
+                    };
+                }
             }
+            thread::sleep(Duration::from_millis(10));
         }
     });
 
-    rx_handle.join().unwrap();
-    tx_handle.join().unwrap();
+    /*
+        GUI THREAD SECTION
+    */
+
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([1200.0, 800.0])
+            .with_title("TESTBENCH"),
+        ..Default::default()
+    };
+
+    // Create the GUI app
+    let app = TelemetryApp::new(Arc::clone(&telemetry_arc), Arc::clone(&throttle_arc));
+
+    // Run the GUI (this blocks the main thread)
+    if let Err(e) = eframe::run_native(
+        "Telemetry Control Panel",
+        options,
+        Box::new(|_cc| Box::new(app)),
+    ) {
+        eprintln!("GUI Error: {}", e);
+    }
 }

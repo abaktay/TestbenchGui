@@ -5,3 +5,5 @@ edition = "2021"
 
 [dependencies]
 serialport = "4.7.2"
+eframe = "0.24"  # egui framework with native backend
+
