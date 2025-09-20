@@ -2,7 +2,7 @@ use std::{
     io::{self, Write},
     sync::{Arc, Mutex},
     thread,
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 use eframe::egui;
@@ -21,7 +21,7 @@ fn main() {
         .read_line(&mut port_name)
         .expect("Failed to read line");
 
-    println!("{}", port_name);
+    // println!("{}", port_name);
     let port = match serialport::new(port_name.trim(), 115200)
         .timeout(Duration::from_millis(500))
         .open()
@@ -45,7 +45,15 @@ fn main() {
     let port_rx = Arc::clone(&port);
     let tele_rx = Arc::clone(&telemetry_arc);
     let rx_handle = thread::spawn(move || {
+        let mut mean_CH1: Vec<f32> = Vec::new();
+        let mut mean_CH2: Vec<f32> = Vec::new();
+        let mut mean_CH3: Vec<f32> = Vec::new();
+
+        // let mut mean_ch1 = [f32; 500];
+        // let mut mean_ch2 = [f32; 500];
+        // let mut mean_ch3 = [f32; 500];
         let mut buf = [0u8; 30];
+        let start = SystemTime::now();
         loop {
             // First acquires the lock of the port for receiving input
             // Then acquires the lock of TelemetryData to update it
@@ -53,11 +61,33 @@ fn main() {
                 match port_guard.read_exact(buf.as_mut_slice()) {
                     Ok(_) => {
                         // println!("Received bytes ");
-                        io::stdout().write_all(&buf).unwrap();
+                        // io::std  out().write_all(&buf).unwrap();
 
                         // Updates TelemetryData
                         if let Ok(mut guard) = tele_rx.lock() {
-                            guard.process(buf);
+                            guard.process(buf, &mut mean_CH1, &mut mean_CH2, &mut mean_CH3);
+                            // println!("Size of mean: {}", mean_CH1.len());
+                            if mean_CH1.len() >= 500 {
+                                let mean: f32 =
+                                    mean_CH1.iter().sum::<f32>() / mean_CH1.len() as f32;
+
+                                let mean2: f32 =
+                                    mean_CH2.iter().sum::<f32>() / mean_CH2.len() as f32;
+
+                                let mean3: f32 =
+                                    mean_CH3.iter().sum::<f32>() / mean_CH3.len() as f32;
+
+                                println!(
+                                    "X: {:.2} -- Y: {:.2} -- Z: {:.2} [{:.2?}]",
+                                    mean,
+                                    mean2,
+                                    mean3,
+                                    start.elapsed().unwrap()
+                                );
+                                mean_CH1.resize(0, 0.0);
+                                mean_CH2.resize(0, 0.0);
+                                mean_CH3.resize(0, 0.0);
+                            }
                         }
                     }
                     Err(e) => {
@@ -82,6 +112,9 @@ fn main() {
                     // Sends the packet after acquiring throttle packet
                     match port_guard.write(tx_guard.prep_packet().as_slice()) {
                         Ok(_) => {
+                            match tx_guard {
+                                _ => {}
+                            }
                             let _ = port_guard.flush();
                         }
                         Err(e) => {
@@ -105,15 +138,21 @@ fn main() {
         ..Default::default()
     };
 
-    // Create the GUI app
     let app = TelemetryApp::new(Arc::clone(&telemetry_arc), Arc::clone(&throttle_arc));
 
-    // Run the GUI (this blocks the main thread)
     if let Err(e) = eframe::run_native(
         "Telemetry Control Panel",
         options,
         Box::new(|_cc| Box::new(app)),
     ) {
         eprintln!("GUI Error: {}", e);
+    }
+
+    if tx_handle.is_finished() {
+        let _ = tx_handle.join();
+    }
+
+    if rx_handle.is_finished() {
+        let _ = rx_handle.join();
     }
 }

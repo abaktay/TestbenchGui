@@ -11,7 +11,7 @@ pub struct TelemetryApp {
     pub throttle_packet: Arc<Mutex<ThrottlePacket>>,
 
     throttle_value: u16,
-    is_armed: bool,
+    status: Commands,
 }
 
 impl TelemetryApp {
@@ -23,7 +23,7 @@ impl TelemetryApp {
             telemetry_data,
             throttle_packet,
             throttle_value: 0,
-            is_armed: false,
+            status: Commands::Disarm,
         }
     }
 
@@ -31,10 +31,11 @@ impl TelemetryApp {
         if let Ok(mut throttle_guard) = self.throttle_packet.try_lock() {
             throttle_guard.set_throttle(self.throttle_value);
 
-            if self.is_armed {
-                throttle_guard.arm_status = Commands::Arm;
-            } else {
-                throttle_guard.arm_status = Commands::Disarm;
+            match self.status {
+                Commands::Set => throttle_guard.arm_status = Commands::Set,
+                Commands::Arm => throttle_guard.arm_status = Commands::Arm,
+                Commands::Disarm => throttle_guard.arm_status = Commands::Disarm,
+                Commands::Reset => throttle_guard.arm_status = Commands::Reset,
             }
         }
     }
@@ -43,6 +44,7 @@ impl TelemetryApp {
 impl eframe::App for TelemetryApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.request_repaint();
+        ctx.pixels_per_point();
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Telemetry Control Panel");
@@ -50,16 +52,24 @@ impl eframe::App for TelemetryApp {
 
             ui.horizontal(|ui| {
                 ui.vertical(|ui| {
-                    ui.set_width(600.0);
+                    ui.set_width(300.0);
                     ui.heading("Control Panel");
                     ui.separator();
 
                     ui.horizontal(|ui| {
                         if ui
-                            .button(if self.is_armed { "DISARM" } else { "ARM" })
+                            .button(if self.status == Commands::Disarm {
+                                "ARM"
+                            } else {
+                                "DISARM"
+                            })
                             .clicked()
                         {
-                            self.is_armed = !self.is_armed;
+                            if self.status == Commands::Disarm {
+                                self.status = Commands::Arm;
+                            } else {
+                                self.status = Commands::Disarm;
+                            }
                             self.update_throttle_packet();
                         }
                     });
@@ -77,11 +87,14 @@ impl eframe::App for TelemetryApp {
                     ui.separator();
 
                     if ui
-                        .add(egui::Button::new("Reset Microcontroller").fill(egui::Color32::RED))
+                        .add_sized(
+                            [140., 40.],
+                            egui::Button::new("Reset Microcontroller").fill(egui::Color32::RED),
+                        )
                         .clicked()
                     {
                         self.throttle_value = 0;
-                        self.is_armed = false;
+                        self.status = Commands::Reset;
                         self.update_throttle_packet();
                     }
                 });
@@ -98,24 +111,24 @@ impl eframe::App for TelemetryApp {
                             .spacing([80.0, 8.0])
                             .striped(true)
                             .show(ui, |ui| {
-                                ui.label("ADC1 CH1:");
-                                ui.label(format!("{:.3}", tele_guard.adc1_ch1));
+                                ui.label("THRUST X:");
+                                ui.label(format!("{}", tele_guard.adc1_ch1));
                                 ui.end_row();
 
-                                ui.label("ADC1 CH2:");
-                                ui.label(format!("{:.3}", tele_guard.adc1_ch2));
+                                ui.label("THRUST Y:");
+                                ui.label(format!("{}", tele_guard.adc1_ch2));
                                 ui.end_row();
 
-                                ui.label("ADC1 CH3:");
-                                ui.label(format!("{:.3}", tele_guard.adc1_ch3));
+                                ui.label("THRUST Z:");
+                                ui.label(format!("{}", tele_guard.adc1_ch3));
                                 ui.end_row();
 
                                 ui.label("ADC2:");
-                                ui.label(format!("{:.3}", tele_guard.adc2));
+                                ui.label(format!("{}", tele_guard.adc2));
                                 ui.end_row();
 
                                 ui.label("ADC3:");
-                                ui.label(format!("{:.3}", tele_guard.adc3));
+                                ui.label(format!("{}", tele_guard.adc3));
                                 ui.end_row();
                             });
                     } else {

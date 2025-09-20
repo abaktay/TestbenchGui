@@ -26,12 +26,22 @@ impl TelemetryData {
         data
     }
 
-    // to be fixed after GUI
-    pub fn process(&mut self, input: [u8; 30]) {
+    // Size of the buffer will change
+    pub fn process(
+        &mut self,
+        input: [u8; 30],
+        mean: &mut Vec<f32>,
+        mean2: &mut Vec<f32>,
+        mean3: &mut Vec<f32>,
+    ) {
         self.adc1_ch1 = f32::from_le_bytes(input[1..5].try_into().unwrap());
         self.adc1_ch2 = f32::from_le_bytes(input[5..9].try_into().unwrap());
         self.adc1_ch3 = f32::from_le_bytes(input[9..13].try_into().unwrap());
         self.adc2 = f32::from_le_bytes(input[13..17].try_into().unwrap());
         self.adc3 = f32::from_le_bytes(input[17..21].try_into().unwrap());
+        // println!("DEBUG {}", self.adc1_ch1);
+        mean.push(self.adc1_ch1);
+        mean2.push(self.adc1_ch2);
+        mean3.push(self.adc1_ch3);
     }
 }

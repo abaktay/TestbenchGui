@@ -8,11 +8,11 @@ pub struct ThrottlePacket {
 // List of commands
 // TODO add neutral
 #[repr(u8)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub enum Commands {
-    Set = 0b00,
+    Disarm = 0b00,
     Arm,
-    Disarm,
+    Set,
     Reset,
 }
 
@@ -39,7 +39,6 @@ impl ThrottlePacket {
 
         buf[3] = (self.throttle_power & 0xFF) as u8;
         buf[4] = ((self.throttle_power >> 8) & 0xFF) as u8; // TODO checksum
-
         buf
     }
 }
