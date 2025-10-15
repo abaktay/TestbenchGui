@@ -6,7 +6,6 @@ pub struct ThrottlePacket {
 }
 
 // List of commands
-// TODO add neutral
 #[repr(u8)]
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum Commands {
@@ -35,8 +34,10 @@ impl ThrottlePacket {
         let mut buf = [0u8; 5];
         buf[0] = self.arm_status as u8;
         buf[1] = (self.throttle_power & 0xFF) as u8;
-        buf[2] = ((self.throttle_power >> 8) & 0xFF) as u8;
+        buf[2] = ((self.throttle_power << 8) & 0xFF) as u8;
 
+        // buf[1] = 0xFF;
+        // buf[2] = 0xFF;
         buf[3] = (self.throttle_power & 0xFF) as u8;
         buf[4] = ((self.throttle_power >> 8) & 0xFF) as u8; // TODO checksum
         buf

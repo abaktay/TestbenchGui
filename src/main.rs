@@ -1,4 +1,5 @@
 use std::{
+    fs::{create_dir, File, OpenOptions},
     io::{self, Write},
     sync::{Arc, Mutex},
     thread,
@@ -13,6 +14,8 @@ mod gui;
 mod uart;
 
 use gui::TelemetryApp;
+
+use crate::uart::file::{csv_starter, path_generator};
 
 fn main() {
     println!("Enter the device address: ");
@@ -33,27 +36,25 @@ fn main() {
         }
     };
 
+    // log files
+
+    let dir = path_generator().unwrap();
+
+    println!("{}", dir);
+    let mut fd: File = csv_starter(dir).unwrap();
+
     let telemetry = TelemetryData::new();
     let telemetry_arc = Arc::new(Mutex::new(telemetry));
 
     let throttle_packet = ThrottlePacket::new(Commands::Set);
     let throttle_arc = Arc::new(Mutex::new(throttle_packet));
-
     /*
         RX THREAD SECTION
     */
     let port_rx = Arc::clone(&port);
     let tele_rx = Arc::clone(&telemetry_arc);
     let rx_handle = thread::spawn(move || {
-        let mut mean_CH1: Vec<f32> = Vec::new();
-        let mut mean_CH2: Vec<f32> = Vec::new();
-        let mut mean_CH3: Vec<f32> = Vec::new();
-
-        // let mut mean_ch1 = [f32; 500];
-        // let mut mean_ch2 = [f32; 500];
-        // let mut mean_ch3 = [f32; 500];
-        let mut buf = [0u8; 30];
-        let start = SystemTime::now();
+        let mut buf = [0u8; 42];
         loop {
             // First acquires the lock of the port for receiving input
             // Then acquires the lock of TelemetryData to update it
@@ -65,29 +66,22 @@ fn main() {
 
                         // Updates TelemetryData
                         if let Ok(mut guard) = tele_rx.lock() {
-                            guard.process(buf, &mut mean_CH1, &mut mean_CH2, &mut mean_CH3);
-                            // println!("Size of mean: {}", mean_CH1.len());
-                            if mean_CH1.len() >= 500 {
-                                let mean: f32 =
-                                    mean_CH1.iter().sum::<f32>() / mean_CH1.len() as f32;
+                            guard.process(buf);
 
-                                let mean2: f32 =
-                                    mean_CH2.iter().sum::<f32>() / mean_CH2.len() as f32;
-
-                                let mean3: f32 =
-                                    mean_CH3.iter().sum::<f32>() / mean_CH3.len() as f32;
-
-                                println!(
-                                    "X: {:.2} -- Y: {:.2} -- Z: {:.2} [{:.2?}]",
-                                    mean,
-                                    mean2,
-                                    mean3,
-                                    start.elapsed().unwrap()
-                                );
-                                mean_CH1.resize(0, 0.0);
-                                mean_CH2.resize(0, 0.0);
-                                mean_CH3.resize(0, 0.0);
-                            }
+                            write!(
+                                fd,
+                                "{:<10.2},{:<10.2},{:<10.2},{:<10.2},{:<10.2},{:<10.2},{:<10.2},{:<10.2},{:<10}\n",
+                                guard.adc1_ch1,
+                                guard.adc1_ch2,
+                                guard.adc1_ch3,
+                                guard.adc2,
+                                guard.adc3,
+                                guard.voltage,
+                                guard.current,
+                                guard.charge,
+                                guard.timestamp
+                            )
+                            .unwrap();
                         }
                     }
                     Err(e) => {
