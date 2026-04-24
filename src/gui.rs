@@ -1,5 +1,6 @@
 use eframe::egui;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use crate::uart::{
     packet::TelemetryData,
@@ -44,7 +45,7 @@ impl TelemetryApp {
 
 impl eframe::App for TelemetryApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        ctx.request_repaint();
+        ctx.request_repaint_after(Duration::from_millis(16));
         ctx.pixels_per_point();
 
         egui::CentralPanel::default().show(ctx, |ui| {

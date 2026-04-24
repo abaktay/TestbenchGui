@@ -41,10 +41,7 @@ impl TelemetryData {
     }
 
     // Size of the buffer will change
-    pub fn process(
-        &mut self,
-        input: [u8; 42],
-    ) {
+    pub fn process(&mut self, input: [u8; 42]) {
         self.adc1_ch1 = f32::from_le_bytes(input[1..5].try_into().unwrap());
         self.adc1_ch2 = f32::from_le_bytes(input[5..9].try_into().unwrap());
         self.adc1_ch3 = f32::from_le_bytes(input[9..13].try_into().unwrap());
@@ -57,6 +54,5 @@ impl TelemetryData {
         self.timestamp = u32::from_le_bytes(input[33..37].try_into().unwrap());
         self.status = u32::from_le_bytes(input[37..41].try_into().unwrap());
         // println!("DEBUG {}", self.adc1_ch1);
-
     }
 }
