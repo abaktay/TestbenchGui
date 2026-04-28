@@ -49,7 +49,6 @@ impl eframe::App for TelemetryApp {
         ctx.pixels_per_point();
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Telemetry Control Panel");
             ui.separator();
 
             ui.horizontal(|ui| {
